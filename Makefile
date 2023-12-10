@@ -22,6 +22,12 @@ BINARIES = matmul
 matmul: matmul.o
 	$(NVCC) $(GENCODE) $(LFLAGS) -o $@ $<
 
+recmatmul: recmatmul.o
+	$(NVCC) $(GENCODE) $(LFLAGS) -o $@ $<
+
+tiledmatmul: tiledmatmul.o
+	$(NVCC) $(GENCODE) $(LFLAGS) -o $@ $<
+
 .cu.o:
 	$(NVCC) $(GENCODE) $(NVCCFLAGS) -o $@ -c $<
 

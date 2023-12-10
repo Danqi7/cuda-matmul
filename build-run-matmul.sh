@@ -41,10 +41,10 @@ echo ""
 echo "***Running matmul"
 time ./matmul 1024 32 32
 echo ""
-time ./matmul 2048 32 32
+time ./matmul 2048 32 64
 echo ""
-time ./matmul 4096 32 32
+time ./matmul 4096 32 128
 echo ""
-time ./matmul 8192 32 32
+time ./matmul 8192 32 256
 echo ""
 echo "***All Done."
