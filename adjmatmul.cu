@@ -6,48 +6,66 @@
 #include <math.h>
 
 #define TW 32
+#define ADJ_NUM 2
 
-__global__ void gpu_matrixmult_tiled(FP *a,FP *b, FP *c, int n, int p, int m) {
+__global__ void gpu_matrixmult_adj(FP *a,FP *b, FP *c, int n, int p, int m) {
   // A: [n, p], B: [p, m], C: [n, m]
-  // Adjacent Tiled Version, block_dim = TW, tile_width
+  // Adjacent Tiled Version with ADJ_NUM, block_dim = TW
   // Assume that the matrix dimensions are multiples of the tile width.
-  __shared__ FP atile[TW][TW];
-  __shared__ FP btile[TW][TW];
+  // Block_Dim should be [TW, ADJ_NUM * TW]; each block is writing [TW, TW*ADJ_NUM] of C
 
+  __shared__ FP Atile[TW][TW];
+  __shared__ FP Btiles[TW][TW * ADJ_NUM];
+
+  int bx = blockIdx.x;
+  int by = blockIdx.y;
   int tx = threadIdx.x;
   int ty = threadIdx.y;
 
-  int col = tx + blockDim.x * blockIdx.x;
-  int row = ty + blockDim.y * blockIdx.y;
+  int row = by * blockDim.y + ty;
+  int baseCol = bx * blockDim.x * ADJ_NUM + tx;
 
-  int index = row * m + col;
-  FP cvalue = 0;
+  FP cvalues[NUM_ADJACENT_TILES] = {0.0};
 
-  for (int i = 0; i < (p + TW - 1)/TW; i++) {
-    // Load a,b tiles from global memory to shared memory
-    // Make sure that the tile is within the matrix bounds
-    if (i*TW + tx < p && row < n) {
-        atile[ty][tx] = a[row * p + i*TW + tx];
-    } else {
-        atile[ty][tx] = 0.0;
-    }
-    if (i*TW + ty < p && col < m) {
-        btile[ty][tx] = b[(i*TW + ty) * m + col];
-    } else {
-        btile[ty][tx] = 0.0;
-    }
-    __syncthreads(); // ensure a,b tiles are loaded before computation
+  // Loop over all tiles in the row(p) direction
+  for (int tid = 0; tid < (p + TW - 1)/TW; tid++) {
+      // Load into shared memory for A tile
+      if (tid * TW + tx < p && row < n) {
+        Atile[ty][tx] = a[row * p + tid * TW + tx];
+      } else {
+        Atile[ty][tx] = 0.0;
+      }
 
-    for (int k = 0; k < TW; k++) {
-      cvalue += atile[ty][k] * btile[k][tx];
-    }
-    __syncthreads(); // ensure all threads have finished before loading new tiles
+      // Load into shared memory for B tiles
+      // Multiple tiles of B are loaded, by all tiles of threads
+      for (int i = 0; i < ADJ_NUM; i++) {
+        int cCol = baseCol + i * TILE_WIDTH;
+        if (t * TILE_WIDTH + ty < p && cCol < m) {
+          btile[ty][tx + i * TILE_WIDTH] = b[(t * TILE_WIDTH + ty) * m + cCol];
+        } else {
+          btile[ty][tx + i * TILE_WIDTH] = 0.0;
+        }
+      }
+      
+      __syncthreads();
 
+      // Multiply tiles together for multiple tiles
+      for (int k = 0; k < TW; k++) {
+        for (int i = 0; i < ADJ_NUM; i++) {
+          if (baseCol + i * TILE_WIDTH < m) {
+              cvalues[i] += atile[ty][k] * btile[k][tx + i * TILE_WIDTH];
+          }
+        }
+      }
+      __syncthreads();
   }
   
-  // check if the thread is within the result matrix bounds
-  if (row < n && col < m) {
-    c[index] = cvalue;
+  // Write back to matrix C
+  for (int i = 0; i < NUM_ADJACENT_TILES; i++) {
+    int cCol = baseCol + i * TILE_WIDTH;
+    if (row < n && cCol < m) {
+      c[row * m + cCol] = cvalues[i];
+    }
   }
 
 }
@@ -137,7 +155,7 @@ int main(int argc, char *argv[]) {
     exit (-1);
   }
 
-  Grid_Dim_X = (m + Block_Dim - 1) / Block_Dim; // rectangular grid; how many blocks in X direction
+  Grid_Dim_X = (m + TW * ADJ_NUM - 1) / (TW * ADJ_NUM); // rectangular grid; how many blocks in X direction
   Grid_Dim_Y = (n + Block_Dim - 1) / Block_Dim; // how many blocks in Y direction
 
   if (Grid_Dim_X*Block_Dim < m) {
