@@ -17,7 +17,7 @@ GENCODE = $(GENCODE_SM75)
 
 .SUFFIXES : .cu
 
-BINARIES = matmul
+BINARIES = matmul recmatmul tiledmatmul adjmatmul
 
 matmul: matmul.o
 	$(NVCC) $(GENCODE) $(LFLAGS) -o $@ $<
@@ -26,6 +26,9 @@ recmatmul: recmatmul.o
 	$(NVCC) $(GENCODE) $(LFLAGS) -o $@ $<
 
 tiledmatmul: tiledmatmul.o
+	$(NVCC) $(GENCODE) $(LFLAGS) -o $@ $<
+
+adjmatmul: adjmatmul.o
 	$(NVCC) $(GENCODE) $(LFLAGS) -o $@ $<
 
 .cu.o:

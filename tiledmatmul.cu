@@ -5,7 +5,7 @@
 #include <stdlib.h>
 #include <math.h>
 
-#define TW 31
+#define TW 32
 
 __global__ void gpu_matrixmult_tiled(FP *a,FP *b, FP *c, int n, int p, int m) {
   // A: [n,p], B: [p, m], C: [n, m]
@@ -203,7 +203,7 @@ int main(int argc, char *argv[]) {
 
   printf("Time to calculate results on GPU: %f ms.\n", elapsed_time_ms); // exec. time
 // START OF OPTIONAL SECTION THAT CAN BE OMITTED
-
+/*
   // ------------- COMPUTATION DONE ON HOST CPU ----------------------------
   // DEBUGGING USE ONLY (AND FOR LIMITED NUMBERS OF TIMING RUNS)
 
@@ -237,7 +237,7 @@ int main(int argc, char *argv[]) {
   sumc = sqrt(sumc);
   error =  sumc/(suma*sumb);
   printf("Approximate relative error between GPU and CPU: %e\n", error);
-
+*/
 // END OF OPTIONAL SECTION THAT CAN BE OMITTED
 // -------------- clean up ---------------------------------------
 

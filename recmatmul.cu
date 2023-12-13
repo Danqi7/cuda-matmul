@@ -22,7 +22,6 @@ __global__ void gpu_matrixmult(FP *a,FP *b, FP *c, int n, int p, int m) {
 
 }
 
-
 void cpu_matrixmult(FP *a,FP *b, FP *c, int n, int p, int m) {
   // A: [n,p], B: [p, m], C: [n, m]
   int index, indexa, indexb;
@@ -53,13 +52,12 @@ void cpu_matrixmult_kij(FP *a,FP *b, FP *c, int n, int p, int m) {
         index = i * m + j;
         indexb = k * m + j;
         //C[i][j] += r * B[k][j];
-        c[index] -= r * b[indexb]; // NOTE: diff between CPU and GPU computations.
+        c[index] = c[index] - (r * b[indexb]); // NOTE: diff between CPU and GPU computations.
       }
     }
 
   }
 }
-
 
 int main(int argc, char *argv[]) {
 
@@ -180,7 +178,7 @@ int main(int argc, char *argv[]) {
 
   printf("Time to calculate results on GPU: %f ms.\n", elapsed_time_ms); // exec. time
 // START OF OPTIONAL SECTION THAT CAN BE OMITTED
-
+/*
   // ------------- COMPUTATION DONE ON HOST CPU ----------------------------
   // DEBUGGING USE ONLY (AND FOR LIMITED NUMBERS OF TIMING RUNS)
 
@@ -214,7 +212,7 @@ int main(int argc, char *argv[]) {
   sumc = sqrt(sumc);
   error =  sumc/(suma*sumb);
   printf("Approximate relative error between GPU and CPU: %e\n", error);
-
+*/
 // END OF OPTIONAL SECTION THAT CAN BE OMITTED
 // -------------- clean up ---------------------------------------
 

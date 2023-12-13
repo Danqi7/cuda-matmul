@@ -14,8 +14,8 @@ __global__ void gpu_matrixmult_adj(FP *a,FP *b, FP *c, int n, int p, int m) {
   // Assume that the matrix dimensions are multiples of the tile width.
   // Block_Dim should be [TW, ADJ_NUM * TW]; each block is writing [TW, TW*ADJ_NUM] of C
 
-  __shared__ FP Atile[TW][TW];
-  __shared__ FP Btiles[TW][TW * ADJ_NUM];
+  __shared__ FP atile[TW][TW];
+  __shared__ FP btile[TW][TW * ADJ_NUM];
 
   int bx = blockIdx.x;
   int by = blockIdx.y;
@@ -25,25 +25,25 @@ __global__ void gpu_matrixmult_adj(FP *a,FP *b, FP *c, int n, int p, int m) {
   int row = by * blockDim.y + ty;
   int baseCol = bx * blockDim.x * ADJ_NUM + tx;
 
-  FP cvalues[NUM_ADJACENT_TILES] = {0.0};
+  FP cvalues[ADJ_NUM] = {0.0};
 
   // Loop over all tiles in the row(p) direction
   for (int tid = 0; tid < (p + TW - 1)/TW; tid++) {
       // Load into shared memory for A tile
       if (tid * TW + tx < p && row < n) {
-        Atile[ty][tx] = a[row * p + tid * TW + tx];
+        atile[ty][tx] = a[row * p + tid * TW + tx];
       } else {
-        Atile[ty][tx] = 0.0;
+        atile[ty][tx] = 0.0;
       }
 
       // Load into shared memory for B tiles
       // Multiple tiles of B are loaded, by all tiles of threads
       for (int i = 0; i < ADJ_NUM; i++) {
-        int cCol = baseCol + i * TILE_WIDTH;
-        if (t * TILE_WIDTH + ty < p && cCol < m) {
-          btile[ty][tx + i * TILE_WIDTH] = b[(t * TILE_WIDTH + ty) * m + cCol];
+        int cCol = baseCol + i * TW;
+        if (tid * TW + ty < p && cCol < m) {
+          btile[ty][tx + i * TW] = b[(tid * TW + ty) * m + cCol];
         } else {
-          btile[ty][tx + i * TILE_WIDTH] = 0.0;
+          btile[ty][tx + i * TW] = 0.0;
         }
       }
       
@@ -52,17 +52,17 @@ __global__ void gpu_matrixmult_adj(FP *a,FP *b, FP *c, int n, int p, int m) {
       // Multiply tiles together for multiple tiles
       for (int k = 0; k < TW; k++) {
         for (int i = 0; i < ADJ_NUM; i++) {
-          if (baseCol + i * TILE_WIDTH < m) {
-              cvalues[i] += atile[ty][k] * btile[k][tx + i * TILE_WIDTH];
+          if (baseCol + i * TW < m) {
+              cvalues[i] += atile[ty][k] * btile[k][tx + i * TW];
           }
         }
       }
       __syncthreads();
   }
   
-  // Write back to matrix C
-  for (int i = 0; i < NUM_ADJACENT_TILES; i++) {
-    int cCol = baseCol + i * TILE_WIDTH;
+  // Write to C
+  for (int i = 0; i < ADJ_NUM; i++) {
+    int cCol = baseCol + i * TW;
     if (row < n && cCol < m) {
       c[row * m + cCol] = cvalues[i];
     }
@@ -140,7 +140,7 @@ int main(int argc, char *argv[]) {
   }
 
   if (argc!=6) {
-    printf("Usage: matmul <matrix dim n> <matrix dim m> <matrix dim p> <block dim> <grid dim>\n");
+    printf("Usage: matmul <matrix dim n> <matrix dim m> <matrix dim p> <tile width> <adj num>\n");
     exit (-1);
   }
 
@@ -158,7 +158,7 @@ int main(int argc, char *argv[]) {
   Grid_Dim_X = (m + TW * ADJ_NUM - 1) / (TW * ADJ_NUM); // rectangular grid; how many blocks in X direction
   Grid_Dim_Y = (n + Block_Dim - 1) / Block_Dim; // how many blocks in Y direction
 
-  if (Grid_Dim_X*Block_Dim < m) {
+  if (Grid_Dim_X*Block_Dim*ADJ_NUM < m) {
     printf("Error, number of threads in x dimensions less than number of array elements\n");
     exit (-1);
   }
@@ -173,6 +173,7 @@ int main(int argc, char *argv[]) {
   printf("Matrix B Dimension = [%d, %d]\n", p, m);
 
   printf("Block_Dim = (%d, %d), Grid_Dim = (%d, %d)\n", Block_Dim, Block_Dim, Grid_Dim_X, Grid_Dim_Y);
+  printf("Tile Width: %d, Adjacent Number: %d\n", TW, ADJ_NUM);
 
   dim3 Grid(Grid_Dim_X, Grid_Dim_Y); //Grid structure
   dim3 Block(Block_Dim, Block_Dim); //Block structure
@@ -212,7 +213,7 @@ int main(int argc, char *argv[]) {
   cudaEventRecord(start, 0);
   // cudaEventSynchronize(start); // not needed
 
-  gpu_matrixmult_tiled<<<Grid,Block>>>(dev_a,dev_b,dev_c, n, p, m);
+  gpu_matrixmult_adj<<<Grid,Block>>>(dev_a,dev_b,dev_c, n, p, m);
 
   cudaEventRecord(stop, 0); // instrument code to measure end time
   cudaEventSynchronize(stop);
